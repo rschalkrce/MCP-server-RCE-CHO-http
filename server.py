@@ -6,6 +6,7 @@ via MCP tools met ingebouwde ontologie-kennis.
 
 import json
 import os
+import re
 import urllib.parse
 import urllib.request
 from mcp.server.fastmcp import FastMCP
@@ -18,6 +19,57 @@ SPARQL_ENDPOINT = os.getenv(
     "SPARQL_ENDPOINT",
     "https://api.linkeddata.cultureelerfgoed.nl/datasets/rce/cho/services/cho/sparql"
 )
+
+CEO_TTL_URL = os.getenv(
+    "CEO_TTL_URL",
+    "https://raw.githubusercontent.com/cultureelerfgoed/CEO/refs/heads/master/CEO_RCE.ttl"
+)
+
+def _load_ttl_context(url: str) -> str:
+    """Extraheer klassen en properties uit de CEO TTL via GitHub."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "RCE-MCP/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            content = resp.read().decode("utf-8")
+    except Exception as e:
+        return f"[TTL kon niet worden geladen: {e} — alleen datamodelregels beschikbaar]"
+
+    class_matches = sorted(set(re.findall(r'(ceo:\w+)\s*\n\s*rdf:type owl:Class', content)))
+    blocks = re.split(r'\n(?=ceo:\w+\s*\n\s*rdf:type owl:)', content)
+    op_info, dp_info = {}, {}
+
+    for block in blocks:
+        name_match = re.match(r'(ceo:\w+)', block)
+        if not name_match:
+            continue
+        name = name_match.group(1)
+        is_op = 'owl:ObjectProperty' in block[:200]
+        is_dp = 'owl:DatatypeProperty' in block[:200]
+        domain = re.search(r'rdfs:domain\s+(ceo:\w+)', block)
+        range_ = re.search(r'rdfs:range\s+(ceo:\w+|xsd:\w+)', block)
+        d = domain.group(1) if domain else '?'
+        r = range_.group(1) if range_ else '?'
+        if is_op:
+            op_info[name] = {'domain': d, 'range': r}
+        elif is_dp:
+            dp_info[name] = {'domain': d, 'range': r}
+
+    lines = ["=== ONTOLOGIE (automatisch geladen uit CEO_RCE.ttl) ===", ""]
+    lines.append(f"KLASSEN ({len(class_matches)}):")
+    for c in class_matches:
+        lines.append(f"  {c}")
+    lines.append("")
+    lines.append(f"OBJECTPROPERTIES ({len(op_info)}) — domain → range:")
+    for p, v in sorted(op_info.items()):
+        lines.append(f"  {p}  [{v['domain']} → {v['range']}]")
+    lines.append("")
+    lines.append(f"DATATYPEPROPERTIES ({len(dp_info)}) — domain → type:")
+    for p, v in sorted(dp_info.items()):
+        lines.append(f"  {p}  [{v['domain']} → {v['range']}]")
+
+    return '\n'.join(lines)
+
+TTL_CONTEXT = _load_ttl_context(CEO_TTL_URL)
 
 WORKFLOW_INSTRUCTIONS = (
     "Je bent een specialist in het RCE Cultureel Erfgoed SPARQL endpoint. "
@@ -316,14 +368,16 @@ def _format_results(data: dict, max_rows: int = 100) -> str:
 def get_ontology_context(include_examples: bool = True) -> str:
     """
     Geeft de volledige ontologie-context van het RCE CHO endpoint terug:
-    prefixen, classes, properties, paden naar literals, provincie-URI's,
-    semantische mapping en spelregels. Roep dit ALTIJD aan voordat je
-    een SPARQL query opstelt.
+    - Klassen en properties (automatisch uit CEO_RCE.ttl via GitHub)
+    - Prefixen, paden, spelregels en semantische mapping (datamodelregels)
+    - Voorbeeldqueries
+
+    Roep dit ALTIJD aan voordat je een SPARQL query opstelt.
 
     Args:
         include_examples: Voeg voorbeeldqueries toe (standaard: True)
     """
-    result = ONTOLOGY_CONTEXT
+    result = TTL_CONTEXT + "\n\n" + ONTOLOGY_CONTEXT
     if include_examples:
         result += "\n" + EXAMPLE_QUERIES
     return result
@@ -354,13 +408,14 @@ def query_sparql(sparql_query: str, max_rows: int = 100) -> str:
         blokkerende_fouten.append("Verboden prefix 'ceosp:' aanwezig.")
     if "ceox:" in q:
         blokkerende_fouten.append("Verboden prefix 'ceox:' aanwezig.")
-    for cls in ["ceo:Rijksmonumenten", "ceo:ArcheologischeComplexen", "ceo:ArcheologischeTerreinen", "ceo:Vondst "]:
-        if cls in q:
+    import re as _re
+    for cls in ["ceo:Rijksmonumenten", "ceo:ArcheologischeComplexen", "ceo:ArcheologischeTerreinen", "ceo:Vondst"]:
+        if _re.search(r'\b' + _re.escape(cls) + r'\b', q):
             blokkerende_fouten.append(f"Verboden classnaam '{cls.strip()}' — gebruik enkelvoud.")
     for prop in ["ceosp:heeftProvincie", "ceox:heeftProvincie", "ceox:heeftAdresgegevens",
                  "ceo:heeftPlaats", "ceo:heeftGemeente", "ceo:heeftAdres",
                  "ceo:heeftArchitect", "ceo:heeftFunctie"]:
-        if prop in q:
+        if _re.search(r'\b' + _re.escape(prop) + r'\b', q):
             blokkerende_fouten.append(f"Verboden property '{prop}' aanwezig.")
     if "FROM" not in q.upper():
         blokkerende_fouten.append(
@@ -454,23 +509,23 @@ def validate_query(sparql_query: str) -> str:
     if "ceox:" in q:
         errors.append("❌ Gebruik van verboden prefix 'ceox:' gevonden.")
 
-    # Verboden classnamen
+    # Verboden classnamen (exacte woordgrens)
     verboden_classes = [
         "ceo:Rijksmonumenten", "ceo:ArcheologischeComplexen",
         "ceo:ArcheologischeTerreinen", "ceo:Vondst"
     ]
     for cls in verboden_classes:
-        if cls in q:
+        if re.search(r'\b' + re.escape(cls) + r'\b', q):
             errors.append(f"❌ Verboden classnaam '{cls}' – gebruik enkelvoud.")
 
-    # Verboden properties
+    # Verboden properties (exacte woordgrens)
     verboden_props = [
         "ceosp:heeftProvincie", "ceox:heeftProvincie", "ceox:heeftAdresgegevens",
         "ceo:heeftPlaats", "ceo:heeftGemeente", "ceo:heeftAdres",
         "ceo:heeftArchitect", "ceo:heeftFunctie"
     ]
     for prop in verboden_props:
-        if prop in q:
+        if re.search(r'\b' + re.escape(prop) + r'\b', q):
             errors.append(f"❌ Verboden property '{prop}' gevonden.")
 
     # FROM clause
