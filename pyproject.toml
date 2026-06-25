@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rce-sparql-mcp"
+version = "1.0.0"
+description = "MCP server voor het RCE Cultureel Erfgoed SPARQL endpoint"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+]
+
+[project.scripts]
+rce-sparql-mcp = "server:mcp.run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
