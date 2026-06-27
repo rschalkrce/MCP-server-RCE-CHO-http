@@ -110,8 +110,15 @@ WORKFLOW_INSTRUCTIONS = (
     "  - Prefixen ceosp: of ceox: gebruiken"
 )
 
-mcp = FastMCP("RCE CHO SPARQL", instructions=WORKFLOW_INSTRUCTIONS)
-print("MCP initialized", flush=True)
+transport = os.getenv("MCP_TRANSPORT", "stdio")
+port = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
+
+if transport in ("http", "sse"):
+    mcp = FastMCP("RCE CHO SPARQL", instructions=WORKFLOW_INSTRUCTIONS, host="0.0.0.0", port=port)
+else:
+    mcp = FastMCP("RCE CHO SPARQL", instructions=WORKFLOW_INSTRUCTIONS)
+
+print(f"MCP initialized (transport={transport})", flush=True)
 
 # ──────────────────────────────────────────────
 # Ingebouwde ontologie-context (uit CEO_RCE.ttl + datamodel_rules.txt)
@@ -607,16 +614,10 @@ def get_provincie_uri(provincie_naam: str) -> str:
 # ──────────────────────────────────────────────
 
 if __name__ == "__main__":
-    transport = os.getenv("MCP_TRANSPORT", "stdio")
-    print(f"Transport: {transport}", flush=True)
+    print(f"Starting server (transport={transport}, port={port if transport in ('http', 'sse') else 'stdio'})", flush=True)
     if transport == "http":
-        # FastMCP leest de poort via PORT omgevingsvariabele
-        os.environ.setdefault("FASTMCP_PORT", os.getenv("PORT", "8000"))
-        print(f"Starting HTTP on port {os.environ['FASTMCP_PORT']}", flush=True)
         mcp.run(transport="streamable-http")
     elif transport == "sse":
-        os.environ.setdefault("FASTMCP_PORT", os.getenv("PORT", "8000"))
-        print(f"Starting SSE on port {os.environ['FASTMCP_PORT']}", flush=True)
         mcp.run(transport="sse")
     else:
-        mcp.run()  # lokaal / stdio
+        mcp.run()
