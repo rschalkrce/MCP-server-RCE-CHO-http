@@ -612,10 +612,10 @@ if __name__ == "__main__":
     if transport == "http":
         port = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
         print(f"Starting HTTP on port {port}", flush=True)
-        mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+        mcp.run(transport="streamable-http", port=port)
     elif transport == "sse":
         port = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
         print(f"Starting SSE on port {port}", flush=True)
-        mcp.run(transport="sse", host="0.0.0.0", port=port)
+        mcp.run(transport="sse", port=port)
     else:
         mcp.run()  # lokaal / stdio
