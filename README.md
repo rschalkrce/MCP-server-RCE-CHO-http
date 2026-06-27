@@ -1,21 +1,62 @@
 # RCE CHO SPARQL MCP Server
 
 MCP server waarmee een LLM het RCE Cultureel Erfgoed SPARQL endpoint kan bevragen.
-Gebouwd op de Cultureel Erfgoed Intologie en de RCE datamodelregels. Niet officieel geaffilieerd met de RCE.
+Gebouwd op de CEO ontologie (automatisch geladen van GitHub) en de RCE datamodelregels.
 
-## Installatie
+## Remote gebruik (geen installatie nodig)
 
-```bash
-# Kloon of kopieer deze map, dan:
-pip install mcp[cli]
+De server draait publiek op Render en is direct te gebruiken:
 
-# Of installeer als pakket:
-pip install -e .
+```
+https://mcp-server-rce-cho-http.onrender.com/mcp
 ```
 
-## Koppelen aan Claude Desktop
+### Claude Desktop (via mcp-remote proxy)
 
-Voeg het volgende toe aan `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "rce-cho-sparql": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp-server-rce-cho-http.onrender.com/mcp"]
+    }
+  }
+}
+```
+
+### Cursor
+
+Voeg toe aan `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "rce-cho-sparql": {
+      "url": "https://mcp-server-rce-cho-http.onrender.com/mcp"
+    }
+  }
+}
+```
+
+### Open WebUI / andere MCP clients
+
+Gebruik de URL direct: `https://mcp-server-rce-cho-http.onrender.com/mcp`
+
+> **Let op:** de server draait op de gratis Render-tier en kan na 15 minuten inactiviteit sluimeren.
+> De eerste aanroep na een pauze duurt dan 20-30 seconden.
+
+---
+
+## Lokale installatie
+
+```bash
+git clone https://github.com/rschalkrce/MCP-server-RCE-CHO-http.git
+cd MCP-server-RCE-CHO-http
+pip install -r requirements.txt
+python server.py
+```
+
+### Koppelen aan Claude Desktop (lokaal)
 
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
@@ -25,47 +66,49 @@ Voeg het volgende toe aan `claude_desktop_config.json`:
   "mcpServers": {
     "rce-cho-sparql": {
       "command": "python",
-      "args": ["/pad/naar/rce-sparql-mcp/server.py"],
-      "env": {
-        "SPARQL_ENDPOINT": "https://api.linkeddata.cultureelerfgoed.nl/datasets/rce/cho/services/cho/sparql"
-      }
+      "args": ["/pad/naar/server.py"]
     }
   }
 }
 ```
 
-Herstart Claude Desktop daarna.
+---
 
 ## Beschikbare tools
 
 | Tool | Beschrijving |
 |---|---|
-| `get_ontology_context` | Geeft prefixen, classes, paden, regels en voorbeeldqueries terug. **Altijd eerst aanroepen.** |
+| `get_ontology_context` | Geeft de volledige ontologie-context terug (klassen, properties, paden, spelregels). Altijd eerst aanroepen. |
 | `query_sparql` | Voert een SPARQL SELECT/ASK query uit op het endpoint |
 | `validate_query` | Checkt een query op veelgemaakte fouten vóór uitvoering |
 | `describe_resource` | DESCRIBE op een specifieke URI |
 | `get_provincie_uri` | Geeft de correcte URI voor een Nederlandse provincie |
 
-## Aanbevolen LLM workflow
+## Hoe het werkt
 
-1. Gebruiker stelt een vraag over erfgoed
-2. LLM roept `get_ontology_context()` aan → krijgt alle regels + voorbeelden
-3. LLM stelt SPARQL query op
-4. LLM roept `validate_query(query)` aan → checkt op fouten
-5. LLM roept `query_sparql(query)` aan → haalt resultaten op
-6. LLM presenteert resultaten in mensentaal
+1. LLM roept `get_ontology_context()` aan → krijgt alle klassen, properties en spelregels
+2. LLM stelt SPARQL query op op basis van de ontologie
+3. LLM roept `validate_query(query)` aan → fouten worden geblokkeerd
+4. LLM roept `query_sparql(query)` aan → resultaten uit de brondata
+5. LLM presenteert resultaten in mensentaal
 
 ## Omgevingsvariabelen
 
 | Variabele | Standaard | Omschrijving |
 |---|---|---|
 | `SPARQL_ENDPOINT` | RCE CHO endpoint | SPARQL endpoint URL |
+| `MCP_TRANSPORT` | `stdio` | `stdio`, `http` of `sse` |
+| `CEO_TTL_URL` | GitHub URL | URL naar de CEO ontologie TTL |
 
-## Endpoint
+## Technische details
 
-```
-https://linkeddata.cultureelerfgoed.nl/rce/cho/sparql
-```
+- **SPARQL endpoint:** `https://api.linkeddata.cultureelerfgoed.nl/datasets/rce/cho/services/cho/sparql`
+- **Graph:** `https://linkeddata.cultureelerfgoed.nl/graph/instanties-rce`
+- **Ontologie:** CEO v1.5, automatisch geladen van [GitHub](https://github.com/cultureelerfgoed/CEO)
+- **Licentie:** CC0 1.0
 
-Publiek beschikbaar, geen authenticatie vereist.
-Graph: `https://linkeddata.cultureelerfgoed.nl/graph/instanties-rce`
+## Bronnen
+
+- [RCE Linked Data](https://linkeddata.cultureelerfgoed.nl)
+- [CEO Ontologie](https://github.com/cultureelerfgoed/CEO)
+- [SPARQL IDE](https://linkeddata.cultureelerfgoed.nl/rce/cho/sparql)
