@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: rce-cho-sparql-mcp
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: MCP_TRANSPORT
+        value: http
+      - key: MCP_PORT
+        value: 10000
+      - key: SPARQL_ENDPOINT
+        value: https://api.linkeddata.cultureelerfgoed.nl/datasets/rce/cho/services/cho/sparql
