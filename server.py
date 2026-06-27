@@ -7,9 +7,12 @@ via MCP tools met ingebouwde ontologie-kennis.
 import json
 import os
 import re
+import sys
 import urllib.parse
 import urllib.request
 from mcp.server.fastmcp import FastMCP
+
+print("Server starting...", flush=True)
 
 # ──────────────────────────────────────────────
 # Configuratie
@@ -69,7 +72,14 @@ def _load_ttl_context(url: str) -> str:
 
     return '\n'.join(lines)
 
-TTL_CONTEXT = _load_ttl_context(CEO_TTL_URL)
+TTL_CONTEXT = None  # lazy geladen bij eerste aanroep
+
+def _get_ttl_context() -> str:
+    """Laad TTL context van GitHub, cached na eerste aanroep."""
+    global TTL_CONTEXT
+    if TTL_CONTEXT is None:
+        TTL_CONTEXT = _load_ttl_context(CEO_TTL_URL)
+    return TTL_CONTEXT
 
 WORKFLOW_INSTRUCTIONS = (
     "Je bent een specialist in het RCE Cultureel Erfgoed SPARQL endpoint. "
@@ -101,6 +111,7 @@ WORKFLOW_INSTRUCTIONS = (
 )
 
 mcp = FastMCP("RCE CHO SPARQL", instructions=WORKFLOW_INSTRUCTIONS)
+print("MCP initialized", flush=True)
 
 # ──────────────────────────────────────────────
 # Ingebouwde ontologie-context (uit CEO_RCE.ttl + datamodel_rules.txt)
@@ -377,7 +388,7 @@ def get_ontology_context(include_examples: bool = True) -> str:
     Args:
         include_examples: Voeg voorbeeldqueries toe (standaard: True)
     """
-    result = TTL_CONTEXT + "\n\n" + ONTOLOGY_CONTEXT
+    result = _get_ttl_context() + "\n\n" + ONTOLOGY_CONTEXT
     if include_examples:
         result += "\n" + EXAMPLE_QUERIES
     return result
@@ -597,12 +608,14 @@ def get_provincie_uri(provincie_naam: str) -> str:
 
 if __name__ == "__main__":
     transport = os.getenv("MCP_TRANSPORT", "stdio")
+    print(f"Transport: {transport}", flush=True)
     if transport == "http":
-        # Render injecteert de poort via PORT, MCP_PORT als fallback
         port = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
+        print(f"Starting HTTP on port {port}", flush=True)
         mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
     elif transport == "sse":
         port = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
+        print(f"Starting SSE on port {port}", flush=True)
         mcp.run(transport="sse", host="0.0.0.0", port=port)
     else:
         mcp.run()  # lokaal / stdio
