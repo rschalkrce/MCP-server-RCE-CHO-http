@@ -596,4 +596,13 @@ def get_provincie_uri(provincie_naam: str) -> str:
 # ──────────────────────────────────────────────
 
 if __name__ == "__main__":
-    mcp.run()
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    if transport == "http":
+        # Render injecteert de poort via PORT, MCP_PORT als fallback
+        port = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
+        mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+    elif transport == "sse":
+        port = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
+        mcp.run(transport="sse", host="0.0.0.0", port=port)
+    else:
+        mcp.run()  # lokaal / stdio
