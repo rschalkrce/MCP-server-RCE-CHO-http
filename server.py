@@ -610,12 +610,13 @@ if __name__ == "__main__":
     transport = os.getenv("MCP_TRANSPORT", "stdio")
     print(f"Transport: {transport}", flush=True)
     if transport == "http":
-        port = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
-        print(f"Starting HTTP on port {port}", flush=True)
-        mcp.run(transport="streamable-http", port=port)
+        # FastMCP leest de poort via PORT omgevingsvariabele
+        os.environ.setdefault("FASTMCP_PORT", os.getenv("PORT", "8000"))
+        print(f"Starting HTTP on port {os.environ['FASTMCP_PORT']}", flush=True)
+        mcp.run(transport="streamable-http")
     elif transport == "sse":
-        port = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
-        print(f"Starting SSE on port {port}", flush=True)
-        mcp.run(transport="sse", port=port)
+        os.environ.setdefault("FASTMCP_PORT", os.getenv("PORT", "8000"))
+        print(f"Starting SSE on port {os.environ['FASTMCP_PORT']}", flush=True)
+        mcp.run(transport="sse")
     else:
         mcp.run()  # lokaal / stdio
