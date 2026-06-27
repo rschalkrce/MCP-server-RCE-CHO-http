@@ -1,7 +1,7 @@
 # RCE CHO SPARQL MCP Server
 
 MCP server waarmee een LLM het RCE Cultureel Erfgoed SPARQL endpoint kan bevragen.
-Gebouwd op de CEO ontologie v1.5 en de RCE datamodelregels.
+Gebouwd op de CEO ontologie en RCE datamodelregels. Niet officieel geaffilieerd met de Rijksdienst voor het Cultureel Erfgoed.
 
 ## Installatie
 
