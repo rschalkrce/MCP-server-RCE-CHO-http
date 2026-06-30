@@ -12,6 +12,12 @@ import urllib.parse
 import urllib.request
 from mcp.server.fastmcp import FastMCP
 
+# Forceer UTF-8, ongeacht systeem-locale (voorkomt kapotte tekens op Render)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 print("Server starting...", flush=True)
 
 # ──────────────────────────────────────────────
@@ -35,7 +41,7 @@ def _load_ttl_context(url: str) -> str:
         with urllib.request.urlopen(req, timeout=15) as resp:
             content = resp.read().decode("utf-8")
     except Exception as e:
-        return f"[TTL kon niet worden geladen: {e} — alleen datamodelregels beschikbaar]"
+        return f"[TTL kon niet worden geladen: {e} - alleen datamodelregels beschikbaar]"
 
     class_matches = sorted(set(re.findall(r'(ceo:\w+)\s*\n\s*rdf:type owl:Class', content)))
     blocks = re.split(r'\n(?=ceo:\w+\s*\n\s*rdf:type owl:)', content)
@@ -62,11 +68,11 @@ def _load_ttl_context(url: str) -> str:
     for c in class_matches:
         lines.append(f"  {c}")
     lines.append("")
-    lines.append(f"OBJECTPROPERTIES ({len(op_info)}) — domain → range:")
+    lines.append(f"OBJECTPROPERTIES ({len(op_info)}) - domain → range:")
     for p, v in sorted(op_info.items()):
         lines.append(f"  {p}  [{v['domain']} → {v['range']}]")
     lines.append("")
-    lines.append(f"DATATYPEPROPERTIES ({len(dp_info)}) — domain → type:")
+    lines.append(f"DATATYPEPROPERTIES ({len(dp_info)}) - domain → type:")
     for p, v in sorted(dp_info.items()):
         lines.append(f"  {p}  [{v['domain']} → {v['range']}]")
 
@@ -83,23 +89,23 @@ def _get_ttl_context() -> str:
 
 WORKFLOW_INSTRUCTIONS = (
     "Je bent een specialist in het RCE Cultureel Erfgoed SPARQL endpoint. "
-    "Je volgt ALTIJD deze vaste volgorde — geen uitzonderingen:\n\n"
-    "STAP 1 — get_ontology_context()\n"
+    "Je volgt ALTIJD deze vaste volgorde - geen uitzonderingen:\n\n"
+    "STAP 1 - get_ontology_context()\n"
     "  Roep dit aan aan het begin van ELKE nieuwe vraag over erfgoeddata. "
     "  Sla deze stap nooit over, ook niet als je denkt de ontologie al te kennen. "
     "  Zonder deze stap mag je geen query opstellen.\n\n"
-    "STAP 2 — Stel de SPARQL query op\n"
+    "STAP 2 - Stel de SPARQL query op\n"
     "  Gebruik uitsluitend de classes, properties en paden uit de ontologie-context. "
     "  Verzin nooit classes of properties. "
     "  Voeg altijd FROM <https://linkeddata.cultureelerfgoed.nl/graph/instanties-rce> toe.\n\n"
-    "STAP 3 — validate_query(query)\n"
+    "STAP 3 - validate_query(query)\n"
     "  Valideer de query voordat je hem uitvoert. "
     "  Los alle fouten (gemarkeerd met x) op voor je doorgaat naar stap 4. "
     "  Bij fouten: pas de query aan en valideer opnieuw.\n\n"
-    "STAP 4 — query_sparql(query)\n"
+    "STAP 4 - query_sparql(query)\n"
     "  Voer de gevalideerde query uit. "
     "  Bij een HTTP-fout of leeg resultaat: herzie de query en begin opnieuw bij stap 2.\n\n"
-    "STAP 5 — Presenteer de resultaten\n"
+    "STAP 5 - Presenteer de resultaten\n"
     "  Vertaal de resultaten naar begrijpelijke Nederlandse tekst voor de gebruiker. "
     "  Vermeld het aantal gevonden resultaten en eventuele beperkingen.\n\n"
     "VERBODEN:\n"
@@ -183,8 +189,32 @@ Naam:
 Omschrijving:
   ?cho ceo:heeftOmschrijving ?omschrijvingNode . ?omschrijvingNode ceo:omschrijving ?omschrijving .
 
-Geometrie:
-  ?cho ceo:heeftGeometrie ?geo . ?geo geo:asWKT ?wkt .
+GEOMETRIE
+
+Gewone geometrie (punt of vlak):
+?cho ceo:heeftGeometrie ?geo .
+?geo geo:asWKT ?wkt .
+
+BELANGRIJK: rijksmonumenten hebben vaak MEERDERE geometrieën:
+- Een punt (POINT) voor de locatie
+- Een vlak (POLYGON/MULTIPOLYGON) voor de contour
+
+Gebruik FILTER om specifiek op vlakgeometrie te selecteren:
+FILTER(STRSTARTS(STR(?wkt), "POLYGON") || STRSTARTS(STR(?wkt), "MULTIPOLYGON") || CONTAINS(STR(?wkt), "POLYGON"))
+
+Of specifiek alleen punten:
+FILTER(STRSTARTS(STR(?wkt), "POINT"))
+
+Gebruik ALTIJD OPTIONAL voor geometrie tenzij de vraag expliciet om geometrie gaat:
+OPTIONAL {
+  ?rm ceo:heeftGeometrie ?geo .
+  ?geo geo:asWKT ?wkt .
+}
+
+Bij vragen over polygonen, contouren, vlakken of kaartweergave:
+- Gebruik de FILTER op POLYGON
+- Selecteer ?wkt in de SELECT-clause
+- Zet geometrie NIET in OPTIONAL als het doel is polygonen op te halen
 
 Rijksmonumentnummer:
   ?rm ceo:rijksmonumentnummer ?nummer .   (xsd:string)
@@ -325,6 +355,21 @@ WHERE {
   FILTER(geof:sfWithin(?rmWkt, ?gWkt))
 }
 LIMIT 20
+
+4. Polygoongeometrieën van rijksmonumenten in gemeente Bunnik:
+SELECT DISTINCT ?rm ?nummer ?naam ?wkt
+FROM <https://linkeddata.cultureelerfgoed.nl/graph/instanties-rce>
+WHERE {
+  ?rm a ceo:Rijksmonument .
+  ?rm ceo:rijksmonumentnummer ?nummer .
+  OPTIONAL { ?rm ceo:heeftNaam ?nNode . ?nNode ceo:naam ?naam . }
+  ?rm ceo:heeftBasisregistratieRelatie ?rel .
+  ?rel ceo:heeftBRKRelatie ?brk .
+  ?brk ceo:gemeentenaam "Bunnik" .
+  ?rm ceo:heeftGeometrie ?geo .
+  ?geo geo:asWKT ?wkt .
+  FILTER(CONTAINS(STR(?wkt), "POLYGON"))
+}
 """
 
 
@@ -372,7 +417,7 @@ def _format_results(data: dict, max_rows: int = 100) -> str:
         values = []
         for var in variables:
             cell = row.get(var, {})
-            values.append(cell.get("value", "—"))
+            values.append(cell.get("value", "-"))
         lines.append(" | ".join(values))
 
     return "\n".join(lines)
@@ -406,7 +451,7 @@ def query_sparql(sparql_query: str, max_rows: int = 100) -> str:
     """
     Voer een SPARQL SELECT of ASK query uit op het RCE CHO endpoint.
 
-    VERPLICHTE WORKFLOW — deze tool weigert queries met bekende fouten:
+    VERPLICHTE WORKFLOW - deze tool weigert queries met bekende fouten:
       1. Roep eerst get_ontology_context() aan
       2. Roep dan validate_query() aan en los alle fouten op
       3. Roep dan pas deze tool aan
@@ -429,7 +474,7 @@ def query_sparql(sparql_query: str, max_rows: int = 100) -> str:
     import re as _re
     for cls in ["ceo:Rijksmonumenten", "ceo:ArcheologischeComplexen", "ceo:ArcheologischeTerreinen", "ceo:Vondst"]:
         if _re.search(r'\b' + _re.escape(cls) + r'\b', q):
-            blokkerende_fouten.append(f"Verboden classnaam '{cls.strip()}' — gebruik enkelvoud.")
+            blokkerende_fouten.append(f"Verboden classnaam '{cls.strip()}' - gebruik enkelvoud.")
     for prop in ["ceosp:heeftProvincie", "ceox:heeftProvincie", "ceox:heeftAdresgegevens",
                  "ceo:heeftPlaats", "ceo:heeftGemeente", "ceo:heeftAdres",
                  "ceo:heeftArchitect", "ceo:heeftFunctie"]:
@@ -447,7 +492,7 @@ def query_sparql(sparql_query: str, max_rows: int = 100) -> str:
     if blokkerende_fouten:
         foutlijst = "\n".join(f"  - {f}" for f in blokkerende_fouten)
         return (
-            "QUERY GEWEIGERD — los de volgende fouten op en roep validate_query() "
+            "QUERY GEWEIGERD - los de volgende fouten op en roep validate_query() "
             "aan voordat je deze tool opnieuw aanroept:\n\n"
             f"{foutlijst}\n\n"
             "Raadpleeg get_ontology_context() voor de juiste classes, properties en paden."
