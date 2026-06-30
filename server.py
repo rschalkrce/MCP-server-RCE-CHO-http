@@ -127,6 +127,48 @@ else:
 print(f"MCP initialized (transport={transport})", flush=True)
 
 # ──────────────────────────────────────────────
+# Custom routes: health check + MCP server card discovery
+# Sommige clients (o.a. Mistral Le Chat) proberen deze endpoints
+# tijdens connector-setup. Zonder deze routes geeft de server 404,
+# wat sommige clients laat falen in plaats van netjes terug te vallen.
+# ──────────────────────────────────────────────
+
+if transport in ("http", "sse"):
+    from starlette.responses import JSONResponse
+
+    @mcp.custom_route("/health", methods=["GET"])
+    async def health_check(request):
+        return JSONResponse({"status": "healthy", "service": "rce-cho-sparql-mcp"})
+
+    @mcp.custom_route("/.well-known/mcp.json", methods=["GET"])
+    async def mcp_server_card(request):
+        return JSONResponse({
+            "schema": "https://static.modelcontextprotocol.io/schemas/mcp-server-card/v1.json",
+            "version": "1.0",
+            "protocolVersion": "2025-03-26",
+            "serverInfo": {
+                "name": "RCE CHO SPARQL",
+                "title": "RCE Cultureel Erfgoed SPARQL MCP",
+                "version": "1.0.0"
+            },
+            "description": "Bevraagt het RCE Cultureel Erfgoed SPARQL endpoint via de CEO ontologie.",
+            "transport": {
+                "type": "streamable-http",
+                "endpoint": "/mcp"
+            },
+            "capabilities": {
+                "tools": {"listChanged": False},
+                "prompts": {"listChanged": False},
+                "resources": {"subscribe": False, "listChanged": False}
+            },
+            "authentication": {"required": False},
+        })
+
+    @mcp.custom_route("/.well-known/mcp/server-card/", methods=["GET"])
+    async def mcp_server_card_alt(request):
+        return await mcp_server_card(request)
+
+# ──────────────────────────────────────────────
 # Ingebouwde ontologie-context (uit CEO_RCE.ttl + datamodel_rules.txt)
 # ──────────────────────────────────────────────
 
